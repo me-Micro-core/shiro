@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+
+    <bean id="securityManager"
+          class="org.apache.shiro.web.mgt.DefaultWebSecurityManager">
+       <!-- <property name="cacheManager" ref="cacheManager" />-->
+
+        <property name="sessionManager" ref="sessionManager"/>
+        <property name="cacheManager" ref="redisCacheManager"/>
+        <!--<property name="sessionMode" value="native" />-->
+        <property name="realm" ref="jdbcRealm" />
+    </bean>
+
+    <!-- ehcache缓存 star-->
+    <bean id="cacheManager"
+          class="org.apache.shiro.cache.ehcache.EhCacheManager">
+        <property name="cacheManagerConfigFile"
+                  value="classpath:ehcache.xml" />
+    </bean>
+    <!--ehcache缓存 end-->
+
+    <!--redis session管理 star -->
+    <bean id="redisCacheManager" class="org.crazycake.shiro.RedisCacheManager">
+        <property name="keyPrefix" value="shiro_redis_session:"/>
+        <property name="redisManager" ref="redisClient"/>
+    </bean>
+
+    <bean id="redisClient" class="com.demo.redis.RedisClient">
+        <constructor-arg name="jedisPool" ref="jedisPool"/>
+        <property name="expire" value="${redis.default.expire}"/>
+    </bean>
+    <bean id="jedisPool" class="redis.clients.jedis.JedisPool" destroy-method="destroy">
+        <!--GenericObjectPoolConfig poolConfig, String host, int port, int timeout, String password, int database-->
+        <constructor-arg ref="redisPoolConfig"/>
+        <constructor-arg value="${redis.host}"/>
+        <constructor-arg type="int" value="${redis.port}"/>
+        <constructor-arg type="int" value="${redis.timeout}"/>
+        <!--密码为空-->
+        <constructor-arg type="java.lang.String">
+            <null/>
+        </constructor-arg>
+        <constructor-arg type="int" value="${redis.dbindex}"/>
+    </bean>
+    <bean id="redisPoolConfig" class="redis.clients.jedis.JedisPoolConfig">
+        <property name="maxTotal" value="${redis.pool.maxActive}"/>
+        <property name="maxIdle" value="${redis.pool.maxIdle}"/>
+        <property name="maxWaitMillis" value="${redis.pool.maxWait}"/>
+        <property name="testOnBorrow" value="${redis.pool.testOnBorrow}"/>
+    </bean>
+    <!--redis session管理 end -->
+
+    <!--sessionManager session管理 开始-->
+    <bean id="sessionManager" class="org.apache.shiro.web.session.mgt.DefaultWebSessionManager">
+        <property name="sessionDAO" ref="redisSessionDAO"/>
+        <property name="sessionIdCookie" ref="simpleCookie"/>
+    </bean>
+    <bean id="redisSessionDAO" class="org.apache.shiro.session.mgt.eis.EnterpriseCacheSessionDAO"></bean>
+
+    <!--simpleCookie,不定义在集群环境下会出现There is no session with id ....-->
+    <bean id="simpleCookie" class="org.apache.shiro.web.servlet.SimpleCookie">
+        <constructor-arg name="name" value="custom.session"/>
+        <property name="path" value="/"/>
+    </bean>
+
+
+
+    <!--sessionManager session管理 结束-->
+
+    <bean id="jdbcRealm" class="com.demo.shiro.ShiroRealm">
+        <!--<property name="cacheManager" ref="redisCacheManager"/>
+        <property name="authenticationCachingEnabled" value="true"/>-->
+    </bean>
+
+    <!-- 配置LifecycleBeanPostProcessor調用配置在ioc容器shiroBean生命周期； -->
+    <bean id="lifecycleBeanPostProcessor"
+          class="org.apache.shiro.spring.LifecycleBeanPostProcessor" />
+
+    <!-- IOC容器使用Shiro注解； -->
+    <bean
+            class="org.springframework.aop.framework.autoproxy.DefaultAdvisorAutoProxyCreator"
+            depends-on="lifecycleBeanPostProcessor" />
+
+    <bean
+            class="org.apache.shiro.spring.security.interceptor.AuthorizationAttributeSourceAdvisor">
+        <property name="securityManager" ref="securityManager" />
+    </bean>
+
+    <bean id="shiroFilter"
+          class="org.apache.shiro.spring.web.ShiroFilterFactoryBean">
+        <property name="securityManager" ref="securityManager" />
+        <property name="loginUrl" value="/login.jsp" />
+        <property name="successUrl" value="/list.jsp" />
+        <property name="unauthorizedUrl" value="/unauthorized.jsp" />
+        <!-- 配置那些頁面需要保护 -->
+        <!-- anon可以匿名访问
+        authc必须要认证通过才可以访问 -->
+        <property name="filterChainDefinitions">
+            <value>
+                /login.jsp = anon
+                /login = anon
+                # everything else requires authentication:
+                /** = authc
+            </value>
+        </property>
+    </bean>
+
+    <!--错误整体拦截-->
+    <!--<bean class="org.springframework.web.servlet.handler.SimpleMappingExceptionResolver">
+        <property name="exceptionMappings">
+            <props>
+                &lt;!&ndash;授权失败jsp路径，对应jsp下403页面&ndash;&gt;
+                <prop key="org.apache.shiro.authz.UnauthorizedException">403</prop>
+                <prop key="java.lang.Throwable">error/500</prop>
+            </props>
+        </property>
+    </bean>-->
+
+</beans>
